@@ -5,7 +5,7 @@ FROM golang:1.24 AS build
 WORKDIR /app
 
 # Download Go modules
-COPY container/go.mod ./
+COPY container/go.mod container/go.sum ./
 RUN go mod download
 
 # Copy container src
