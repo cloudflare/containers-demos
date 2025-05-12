@@ -1,0 +1,31 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "marimo",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-03",
+	"migrations": [
+		{
+			"new_sqlite_classes": [
+				"Container",
+			],
+			"tag": "v1"
+		}
+	],
+	"containers": [{
+		"name": "container-marimo",
+		"image": "./Dockerfile",
+		"class_name": "Container",
+		"max_instances": 3
+	}],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "Container",
+				"name": "CONTAINER"
+			},
+		]
+	},
+	"observability": {
+		"enabled": true
+	}
+}
