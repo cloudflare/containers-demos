@@ -1,0 +1,49 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "egress-workers",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-02-23",
+	"migrations": [
+		{
+			"new_sqlite_classes": [
+				"Container"
+			],
+			"tag": "v1",
+		}
+	],
+	"containers": [{
+		"image": "./Dockerfile",
+		"class_name": "Container",
+		"max_instances": 10,
+        "instance_type": "standard-2",
+        "constraints": {
+            "regions": ["WNAM"],
+            "tiers": [3]
+        }
+	}],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "Container",
+				"name": "CONTAINER"
+			},
+		]
+	},
+	"observability": {
+		"enabled": true
+	},
+    "r2_buckets": [
+            {
+                    "binding": "ONE_GB",
+                    "bucket_name": "1gb"
+            }
+    ],
+    "kv_namespaces": [
+            {
+                    "binding": "KV",
+                    "name": "test-kv",
+
+                    "id": "0583f507c1e84705b7b798289182a47c"
+            }
+    ]
+}
