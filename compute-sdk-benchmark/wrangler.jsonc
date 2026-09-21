@@ -1,0 +1,25 @@
+{
+  "name": "compute-sdk-benchmark",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-16",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SANDBOX",
+        "class_name": "Sandbox"
+      }
+    ]
+  },
+  "exports": {
+    "Sandbox": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "scheduling_policy": "durable_object"
+    }
+  ]
+}

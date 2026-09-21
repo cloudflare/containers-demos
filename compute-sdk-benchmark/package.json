@@ -1,0 +1,16 @@
+{
+  "name": "compute-sdk-benchmark",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "description": "Cloudflare Worker that exposes a minimal sandbox HTTP API",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.8",
+    "wrangler": "^4.132.0"
+  }
+}
