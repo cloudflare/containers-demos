@@ -23,16 +23,12 @@ interface TestDurableObjectID {
 
 const DURABLE_OBJECT_ID = '0123456789abcdef'.repeat(4);
 
-function arrayBuffer(bytes: number[]): ArrayBuffer {
-    return Uint8Array.from(bytes).buffer as ArrayBuffer;
-}
-
 function sandboxStub(overrides: Partial<SandboxStub> = {}): SandboxStub {
     return {
         start: async () => { },
         exec: async () => ({
-            stdout: arrayBuffer([]),
-            stderr: arrayBuffer([]),
+            stdout: new ArrayBuffer(0),
+            stderr: new ArrayBuffer(0),
             exitCode: 0
         }),
         destroy: async () => { },
@@ -77,7 +73,7 @@ function sandboxWith(container: object): Sandbox {
     );
 }
 
-describe('ComputeSDK bridge routes', () => {
+describe('sandbox routes', () => {
     it('requires the configured bearer token', async () => {
         const stub = sandboxStub();
         const unauthorized = await worker.fetch(
@@ -121,11 +117,11 @@ describe('ComputeSDK bridge routes', () => {
         await expect(response.json()).resolves.toEqual({ id: DURABLE_OBJECT_ID });
     });
 
-    it('returns command output as ComputeSDK SSE events', async () => {
+    it('returns command output as SSE events', async () => {
         const stub = sandboxStub({
             exec: async () => ({
-                stdout: arrayBuffer([0, 255]),
-                stderr: arrayBuffer([10]),
+                stdout: Uint8Array.from([0, 255]).buffer,
+                stderr: Uint8Array.from([10]).buffer,
                 exitCode: 7
             })
         });
@@ -203,8 +199,8 @@ describe('Sandbox container lifecycle', () => {
         let startOptions: unknown;
         const exec = vi.fn(async () =>
             processWith({
-                stdout: arrayBuffer([]),
-                stderr: arrayBuffer([]),
+                stdout: new ArrayBuffer(0),
+                stderr: new ArrayBuffer(0),
                 exitCode: 0
             })
         );
@@ -272,8 +268,8 @@ describe('Sandbox container lifecycle', () => {
                         new Promise<ExecOutputLike>((resolve) => {
                             const finish = () =>
                                 resolve({
-                                    stdout: arrayBuffer([]),
-                                    stderr: arrayBuffer([]),
+                                    stdout: new ArrayBuffer(0),
+                                    stderr: new ArrayBuffer(0),
                                     exitCode: 137
                                 });
                             if (signal.aborted) finish();

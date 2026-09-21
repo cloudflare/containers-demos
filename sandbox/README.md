@@ -1,4 +1,4 @@
-# compute-sdk-benchmark
+# sandbox
 
 Cloudflare Worker that exposes a minimal sandbox HTTP API. It creates and manages sandboxed execution environments backed directly by [Cloudflare Containers](https://developers.cloudflare.com/containers/) attached to Durable Objects.
 
