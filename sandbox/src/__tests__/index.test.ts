@@ -197,13 +197,12 @@ describe('sandbox routes', () => {
 describe('Sandbox container lifecycle', () => {
     it('starts the managed image without a readiness command', async () => {
         let startOptions: unknown;
-        const exec = vi.fn(async () =>
-            processWith({
-                stdout: new ArrayBuffer(0),
-                stderr: new ArrayBuffer(0),
-                exitCode: 0
-            })
-        );
+        const execOutput = {
+            stdout: new ArrayBuffer(0),
+            stderr: new ArrayBuffer(0),
+            exitCode: 0
+        };
+        const exec = vi.fn(async () => processWith(execOutput));
         const container = {
             running: false,
             start(options: unknown) {
@@ -225,9 +224,9 @@ describe('Sandbox container lifecycle', () => {
         });
         expect(exec).not.toHaveBeenCalled();
 
-        await expect(
-            sandbox.exec(['true'], undefined, 1_000)
-        ).resolves.toMatchObject({ exitCode: 0 });
+        const result = await sandbox.exec(['true'], undefined, 1_000);
+        expect(result).toEqual(execOutput);
+        expect(result).not.toBe(execOutput);
         expect(exec).toHaveBeenCalledWith(['true'], {
             cwd: undefined,
             stdout: 'pipe',

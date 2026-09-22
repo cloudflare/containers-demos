@@ -6,6 +6,12 @@ interface ExecRequest {
     timeout_ms?: number;
 }
 
+interface ExecResult {
+    stdout: ArrayBuffer;
+    stderr: ArrayBuffer;
+    exitCode: number;
+}
+
 const MAX_EXEC_TIMEOUT_MS = 15 * 60_000;
 
 function errorResponse(error: unknown, status = 500): Response {
@@ -96,7 +102,7 @@ export class Sandbox extends DurableObject<Env> {
         argv: string[],
         cwd: string | undefined,
         timeoutMs: number
-    ): Promise<ExecOutput> {
+    ): Promise<ExecResult> {
         const signal = AbortSignal.timeout(timeoutMs);
         const process = await this.container.exec(argv, {
             cwd,
@@ -106,7 +112,11 @@ export class Sandbox extends DurableObject<Env> {
         });
         const output = await process.output();
         signal.throwIfAborted();
-        return output;
+        return {
+            stdout: output.stdout,
+            stderr: output.stderr,
+            exitCode: output.exitCode
+        };
     }
 
     async destroy(): Promise<void> {
