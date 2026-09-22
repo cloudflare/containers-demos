@@ -11,11 +11,10 @@ It uses the container `start()` API to specify the container image and configura
 
 ## Getting Started
 
-Install dependencies and generate the Worker types:
+Install dependencies:
 
 ```sh
 pnpm install
-pnpm wrangler types
 ```
 
 Configure a local bearer token and start the Worker:

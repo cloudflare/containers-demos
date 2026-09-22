@@ -219,7 +219,7 @@ describe('Sandbox container lifecycle', () => {
 
         expect(startOptions).toEqual({
             image: 'cloudflare/debian-trixie',
-            instance: 'lite',
+            instance: 'standard-1',
             entrypoint: ['sh', '-c', 'sleep infinity'],
             enableInternet: false
         });
