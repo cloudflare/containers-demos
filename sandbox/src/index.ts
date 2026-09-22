@@ -85,7 +85,7 @@ export class Sandbox extends DurableObject<Env> {
         if (!container.running) {
             container.start({
                 image: 'cloudflare/debian-trixie',
-                instance: 'lite',
+                instance: 'standard-1',
                 entrypoint: ['sh', '-c', 'sleep infinity'],
                 enableInternet: false
             });
