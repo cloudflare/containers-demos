@@ -12,6 +12,13 @@ interface ExecResult {
     exitCode: number;
 }
 
+interface SandboxOptions {
+    vcpu?: number;
+    memoryMib?: number;
+    diskMb?: number;
+    image?: string;
+}
+
 const MAX_EXEC_TIMEOUT_MS = 15 * 60_000;
 
 function errorResponse(error: unknown, status = 500): Response {
@@ -34,6 +41,40 @@ function execResponse(result: ExecOutput): Response {
             'Content-Type': 'text/event-stream; charset=utf-8'
         }
     });
+}
+
+async function createRequest(request: Request): Promise<SandboxOptions> {
+    const text = await request.text();
+    if (text === '') return {};
+
+    let body: unknown;
+    try {
+        body = JSON.parse(text);
+    } catch {
+        throw new TypeError('request body must be valid JSON');
+    }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+        throw new TypeError('request body must be a JSON object');
+    }
+
+    const { vcpu, memoryMib, diskMb, image } = body as Record<string, unknown>;
+    for (const [name, value] of Object.entries({ vcpu, memoryMib, diskMb })) {
+        if (
+            value !== undefined &&
+            (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+        ) {
+            throw new TypeError(`${name} must be a positive number`);
+        }
+    }
+    const sizes = [vcpu, memoryMib, diskMb].filter((value) => value !== undefined);
+    if (sizes.length !== 0 && sizes.length !== 3) {
+        throw new TypeError('vcpu, memoryMib, and diskMb must be set together');
+    }
+    if (image !== undefined && typeof image !== 'string') {
+        throw new TypeError('image must be a string');
+    }
+
+    return { vcpu, memoryMib, diskMb, image } as SandboxOptions;
 }
 
 async function execRequest(request: Request): Promise<ExecRequest> {
@@ -88,13 +129,24 @@ export class Sandbox extends DurableObject<Env> {
         return this.ctx.container;
     }
 
-    start(): void {
+    start({ vcpu, memoryMib, diskMb, image }: SandboxOptions = {}): void {
         const container = this.container;
         if (container.running) return;
 
+        let imageReference = 'cloudflare/debian-trixie';
+        if (image !== undefined) {
+            imageReference = container.images[image];
+            if (imageReference === undefined) {
+                throw new TypeError(`unknown image: ${image}`);
+            }
+        }
+
         container.start({
-            image: 'cloudflare/debian-trixie',
-            instance: 'standard-1',
+            image: imageReference,
+            instance:
+                vcpu === undefined || memoryMib === undefined || diskMb === undefined
+                    ? 'standard-1'
+                    : { vcpu, memoryMib, diskMb },
             entrypoint: ['sh', '-c', 'sleep infinity'],
             enableInternet: true
         });
@@ -174,10 +226,10 @@ export default {
             const objectID = env.SANDBOX.newUniqueId();
             const stub = env.SANDBOX.get(objectID);
             try {
-                await stub.start();
+                await stub.start(await createRequest(request));
                 return Response.json({ id: objectID.toString() });
             } catch (error) {
-                return errorResponse(error, 503);
+                return errorResponse(error, error instanceof TypeError ? 400 : 503);
             }
         }
 

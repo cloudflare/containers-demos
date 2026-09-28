@@ -7,6 +7,7 @@ It uses the container `start()` API to specify the container image and configura
 ## Prerequisites
 
 - Node.js and pnpm
+- Docker, to build the `builder` image during deployment
 - A Cloudflare account with Durable Objects and Containers enabled
 
 ## Getting Started
@@ -79,6 +80,27 @@ curl --fail --silent --show-error \
   -X POST "$CLOUDFLARE_SANDBOX_URL/v1/sandbox" \
   -H "Authorization: Bearer $SANDBOX_API_KEY"
 ```
+
+To choose the size and image of the container, send a JSON body:
+
+```sh
+curl --fail --silent --show-error \
+  -X POST "$CLOUDFLARE_SANDBOX_URL/v1/sandbox" \
+  -H "Authorization: Bearer $SANDBOX_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"vcpu":2,"memoryMib":6144,"diskMb":12000,"image":"builder"}'
+```
+
+Request body (optional):
+
+| Field       | Type     | Required | Description                                                                                          |
+| ----------- | -------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `vcpu`      | `number` | no       | vCPUs of a [custom instance type](https://developers.cloudflare.com/containers/platform/limits/#custom-instance-types) |
+| `memoryMib` | `number` | no       | Memory of a custom instance type, in MiB                                                             |
+| `diskMb`    | `number` | no       | Disk of a custom instance type, in MB                                                                |
+| `image`     | `string` | no       | `builder` selects an image with Node.js 24 and common build tools                                    |
+
+`vcpu`, `memoryMib`, and `diskMb` must be set together. Without them, the container uses the `standard-1` instance type. Without `image`, it uses `cloudflare/debian-trixie`. Containers can reach the internet.
 
 Response:
 
