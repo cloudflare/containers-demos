@@ -19,7 +19,12 @@
   "containers": [
     {
       "class_name": "Sandbox",
-      "scheduling_policy": "durable_object"
+      "scheduling_policy": "durable_object",
+      "images": {
+        "builder": {
+          "dockerfile": "./builder/Dockerfile"
+        }
+      }
     }
   ]
 }

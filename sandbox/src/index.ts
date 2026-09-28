@@ -12,6 +12,13 @@ interface ExecResult {
     exitCode: number;
 }
 
+interface SandboxOptions {
+    vcpu?: number;
+    memoryMib?: number;
+    diskMb?: number;
+    image?: string;
+}
+
 const MAX_EXEC_TIMEOUT_MS = 15 * 60_000;
 
 function errorResponse(error: unknown, status = 500): Response {
@@ -34,6 +41,40 @@ function execResponse(result: ExecOutput): Response {
             'Content-Type': 'text/event-stream; charset=utf-8'
         }
     });
+}
+
+async function createRequest(request: Request): Promise<SandboxOptions> {
+    const text = await request.text();
+    if (text === '') return {};
+
+    let body: unknown;
+    try {
+        body = JSON.parse(text);
+    } catch {
+        throw new TypeError('request body must be valid JSON');
+    }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+        throw new TypeError('request body must be a JSON object');
+    }
+
+    const { vcpu, memoryMib, diskMb, image } = body as Record<string, unknown>;
+    for (const [name, value] of Object.entries({ vcpu, memoryMib, diskMb })) {
+        if (
+            value !== undefined &&
+            (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+        ) {
+            throw new TypeError(`${name} must be a positive number`);
+        }
+    }
+    const sizes = [vcpu, memoryMib, diskMb].filter((value) => value !== undefined);
+    if (sizes.length !== 0 && sizes.length !== 3) {
+        throw new TypeError('vcpu, memoryMib, and diskMb must be set together');
+    }
+    if (image !== undefined && typeof image !== 'string') {
+        throw new TypeError('image must be a string');
+    }
+
+    return { vcpu, memoryMib, diskMb, image } as SandboxOptions;
 }
 
 async function execRequest(request: Request): Promise<ExecRequest> {
@@ -79,6 +120,8 @@ async function execRequest(request: Request): Promise<ExecRequest> {
 }
 
 export class Sandbox extends DurableObject<Env> {
+    #exitError: unknown;
+
     get container(): Container {
         if (this.ctx.container === undefined) {
             throw new Error('Container attachment is unavailable');
@@ -86,16 +129,34 @@ export class Sandbox extends DurableObject<Env> {
         return this.ctx.container;
     }
 
-    start(): void {
+    start({ vcpu, memoryMib, diskMb, image }: SandboxOptions = {}): void {
         const container = this.container;
-        if (!container.running) {
-            container.start({
-                image: 'cloudflare/debian-trixie',
-                instance: 'standard-1',
-                entrypoint: ['sh', '-c', 'sleep infinity'],
-                enableInternet: false
-            });
+        if (container.running) return;
+
+        let imageReference = 'cloudflare/debian-trixie';
+        if (image !== undefined) {
+            imageReference = container.images[image];
+            if (imageReference === undefined) {
+                throw new TypeError(`unknown image: ${image}`);
+            }
         }
+
+        container.start({
+            image: imageReference,
+            instance:
+                vcpu === undefined || memoryMib === undefined || diskMb === undefined
+                    ? 'standard-1'
+                    : { vcpu, memoryMib, diskMb },
+            entrypoint: ['sh', '-c', 'sleep infinity'],
+            enableInternet: true
+        });
+
+        // start() reports failures, such as exceeded account limits, only
+        // through monitor(). exec() reports them in place of a generic error.
+        this.#exitError = undefined;
+        container.monitor().catch((error: unknown) => {
+            this.#exitError = error;
+        });
     }
 
     async exec(
@@ -103,20 +164,37 @@ export class Sandbox extends DurableObject<Env> {
         cwd: string | undefined,
         timeoutMs: number
     ): Promise<ExecResult> {
-        const signal = AbortSignal.timeout(timeoutMs);
-        const process = await this.container.exec(argv, {
-            cwd,
-            stdout: 'pipe',
-            stderr: 'pipe',
-            signal
-        });
-        const output = await process.output();
-        signal.throwIfAborted();
-        return {
-            stdout: output.stdout,
-            stderr: output.stderr,
-            exitCode: output.exitCode
-        };
+        if (!this.container.running && this.#exitError !== undefined) {
+            throw this.#exitError;
+        }
+
+        // A timeout signal that fires after the process exits logs an internal
+        // error, so the timer is cleared when the command ends.
+        const controller = new AbortController();
+        const timer = setTimeout(
+            () =>
+                controller.abort(
+                    new DOMException(`Command timed out after ${timeoutMs} ms`, 'TimeoutError')
+                ),
+            timeoutMs
+        );
+        try {
+            const process = await this.container.exec(argv, {
+                cwd,
+                stdout: 'pipe',
+                stderr: 'pipe',
+                signal: controller.signal
+            });
+            const output = await process.output();
+            controller.signal.throwIfAborted();
+            return {
+                stdout: output.stdout,
+                stderr: output.stderr,
+                exitCode: output.exitCode
+            };
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     async destroy(): Promise<void> {
@@ -148,10 +226,10 @@ export default {
             const objectID = env.SANDBOX.newUniqueId();
             const stub = env.SANDBOX.get(objectID);
             try {
-                await stub.start();
+                await stub.start(await createRequest(request));
                 return Response.json({ id: objectID.toString() });
             } catch (error) {
-                return errorResponse(error, 503);
+                return errorResponse(error, error instanceof TypeError ? 400 : 503);
             }
         }
 

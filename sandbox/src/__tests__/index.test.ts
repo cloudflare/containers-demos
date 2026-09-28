@@ -8,7 +8,7 @@ interface ExecOutputLike {
 }
 
 interface SandboxStub {
-    start(): Promise<void>;
+    start(options?: object): Promise<void>;
     exec(
         argv: string[],
         cwd: string | undefined,
@@ -117,6 +117,49 @@ describe('sandbox routes', () => {
         await expect(response.json()).resolves.toEqual({ id: DURABLE_OBJECT_ID });
     });
 
+    it('passes the requested size and image to the sandbox', async () => {
+        const start = vi.fn(async () => { });
+        const env = envFor(sandboxStub({ start }));
+
+        const empty = await worker.fetch(request('/v1/sandbox', { method: 'POST' }), env);
+        expect(empty.status).toBe(200);
+        expect(start).toHaveBeenLastCalledWith({});
+
+        const sized = await worker.fetch(
+            request('/v1/sandbox', {
+                method: 'POST',
+                body: JSON.stringify({ vcpu: 8, memoryMib: 16384, diskMb: 20000, image: 'builder' })
+            }),
+            env
+        );
+        expect(sized.status).toBe(200);
+        expect(start).toHaveBeenLastCalledWith({
+            vcpu: 8,
+            memoryMib: 16384,
+            diskMb: 20000,
+            image: 'builder'
+        });
+    });
+
+    it.each([
+        'not json',
+        '[]',
+        '{"vcpu":8}',
+        '{"vcpu":8,"memoryMib":16384}',
+        '{"vcpu":-1,"memoryMib":1024,"diskMb":1000}',
+        '{"vcpu":1,"memoryMib":"1024","diskMb":1000}',
+        '{"diskMb":1000}',
+        '{"image":1}'
+    ])('rejects invalid create input: %s', async (body) => {
+        const start = vi.fn(async () => { });
+        const response = await worker.fetch(
+            request('/v1/sandbox', { method: 'POST', body }),
+            envFor(sandboxStub({ start }))
+        );
+        expect(response.status).toBe(400);
+        expect(start).not.toHaveBeenCalled();
+    });
+
     it('returns command output as SSE events', async () => {
         const stub = sandboxStub({
             exec: async () => ({
@@ -210,6 +253,7 @@ describe('Sandbox container lifecycle', () => {
                 this.running = true;
             },
             exec,
+            monitor: () => new Promise(() => { }),
             destroy: vi.fn(async () => { })
         };
 
@@ -220,7 +264,7 @@ describe('Sandbox container lifecycle', () => {
             image: 'cloudflare/debian-trixie',
             instance: 'standard-1',
             entrypoint: ['sh', '-c', 'sleep infinity'],
-            enableInternet: false
+            enableInternet: true
         });
         expect(exec).not.toHaveBeenCalled();
 
@@ -233,6 +277,50 @@ describe('Sandbox container lifecycle', () => {
             stderr: 'pipe',
             signal: expect.any(AbortSignal)
         });
+    });
+
+    it('starts a requested size and image', async () => {
+        const start = vi.fn();
+        const sandbox = sandboxWith({
+            running: false,
+            images: { builder: 'registry.cloudflare.com/account/builder:1' },
+            start,
+            monitor: () => new Promise(() => { })
+        });
+
+        sandbox.start({ vcpu: 8, memoryMib: 16384, diskMb: 20000, image: 'builder' });
+        expect(start).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                image: 'registry.cloudflare.com/account/builder:1',
+                instance: { vcpu: 8, memoryMib: 16384, diskMb: 20000 }
+            })
+        );
+
+        sandbox.start({});
+        expect(start).toHaveBeenLastCalledWith(
+            expect.objectContaining({ image: 'cloudflare/debian-trixie', instance: 'standard-1' })
+        );
+
+        expect(() => sandbox.start({ image: 'missing' })).toThrow(TypeError);
+    });
+
+    it('reports a container start failure from exec', async () => {
+        const exec = vi.fn();
+        const sandbox = sandboxWith({
+            running: false,
+            start: vi.fn(),
+            exec,
+            monitor: async () => {
+                throw new Error('Container exceeds account limits');
+            }
+        });
+
+        sandbox.start();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await expect(sandbox.exec(['true'], undefined, 1_000)).rejects.toThrow(
+            'Container exceeds account limits'
+        );
+        expect(exec).not.toHaveBeenCalled();
     });
 
     it('is idempotent when destroying a stopped container', async () => {
@@ -250,6 +338,30 @@ describe('Sandbox container lifecycle', () => {
         await sandbox.destroy();
         await sandbox.destroy();
         expect(destroy).toHaveBeenCalledOnce();
+    });
+
+    it('clears the timeout when a command ends', async () => {
+        vi.useFakeTimers();
+        try {
+            let signal: AbortSignal | undefined;
+            const sandbox = sandboxWith({
+                running: true,
+                exec: async (_argv: string[], options: { signal?: AbortSignal }) => {
+                    signal = options.signal;
+                    return processWith({
+                        stdout: new ArrayBuffer(0),
+                        stderr: new ArrayBuffer(0),
+                        exitCode: 0
+                    });
+                }
+            });
+
+            await sandbox.exec(['true'], undefined, 1_000);
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(signal?.aborted).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('aborts a process after timeout', async () => {
