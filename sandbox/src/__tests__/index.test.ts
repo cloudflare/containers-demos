@@ -210,6 +210,7 @@ describe('Sandbox container lifecycle', () => {
                 this.running = true;
             },
             exec,
+            monitor: () => new Promise(() => { }),
             destroy: vi.fn(async () => { })
         };
 
@@ -233,6 +234,25 @@ describe('Sandbox container lifecycle', () => {
             stderr: 'pipe',
             signal: expect.any(AbortSignal)
         });
+    });
+
+    it('reports a container start failure from exec', async () => {
+        const exec = vi.fn();
+        const sandbox = sandboxWith({
+            running: false,
+            start: vi.fn(),
+            exec,
+            monitor: async () => {
+                throw new Error('Container exceeds account limits');
+            }
+        });
+
+        sandbox.start();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await expect(sandbox.exec(['true'], undefined, 1_000)).rejects.toThrow(
+            'Container exceeds account limits'
+        );
+        expect(exec).not.toHaveBeenCalled();
     });
 
     it('is idempotent when destroying a stopped container', async () => {

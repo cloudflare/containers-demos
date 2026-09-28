@@ -79,6 +79,8 @@ async function execRequest(request: Request): Promise<ExecRequest> {
 }
 
 export class Sandbox extends DurableObject<Env> {
+    #exitError: unknown;
+
     get container(): Container {
         if (this.ctx.container === undefined) {
             throw new Error('Container attachment is unavailable');
@@ -88,14 +90,21 @@ export class Sandbox extends DurableObject<Env> {
 
     start(): void {
         const container = this.container;
-        if (!container.running) {
-            container.start({
-                image: 'cloudflare/debian-trixie',
-                instance: 'standard-1',
-                entrypoint: ['sh', '-c', 'sleep infinity'],
-                enableInternet: true
-            });
-        }
+        if (container.running) return;
+
+        container.start({
+            image: 'cloudflare/debian-trixie',
+            instance: 'standard-1',
+            entrypoint: ['sh', '-c', 'sleep infinity'],
+            enableInternet: true
+        });
+
+        // start() reports failures, such as exceeded account limits, only
+        // through monitor(). exec() reports them in place of a generic error.
+        this.#exitError = undefined;
+        container.monitor().catch((error: unknown) => {
+            this.#exitError = error;
+        });
     }
 
     async exec(
@@ -103,6 +112,10 @@ export class Sandbox extends DurableObject<Env> {
         cwd: string | undefined,
         timeoutMs: number
     ): Promise<ExecResult> {
+        if (!this.container.running && this.#exitError !== undefined) {
+            throw this.#exitError;
+        }
+
         // A timeout signal that fires after the process exits logs an internal
         // error, so the timer is cleared when the command ends.
         const controller = new AbortController();
