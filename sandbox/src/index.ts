@@ -103,20 +103,33 @@ export class Sandbox extends DurableObject<Env> {
         cwd: string | undefined,
         timeoutMs: number
     ): Promise<ExecResult> {
-        const signal = AbortSignal.timeout(timeoutMs);
-        const process = await this.container.exec(argv, {
-            cwd,
-            stdout: 'pipe',
-            stderr: 'pipe',
-            signal
-        });
-        const output = await process.output();
-        signal.throwIfAborted();
-        return {
-            stdout: output.stdout,
-            stderr: output.stderr,
-            exitCode: output.exitCode
-        };
+        // A timeout signal that fires after the process exits logs an internal
+        // error, so the timer is cleared when the command ends.
+        const controller = new AbortController();
+        const timer = setTimeout(
+            () =>
+                controller.abort(
+                    new DOMException(`Command timed out after ${timeoutMs} ms`, 'TimeoutError')
+                ),
+            timeoutMs
+        );
+        try {
+            const process = await this.container.exec(argv, {
+                cwd,
+                stdout: 'pipe',
+                stderr: 'pipe',
+                signal: controller.signal
+            });
+            const output = await process.output();
+            controller.signal.throwIfAborted();
+            return {
+                stdout: output.stdout,
+                stderr: output.stderr,
+                exitCode: output.exitCode
+            };
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     async destroy(): Promise<void> {

@@ -252,6 +252,30 @@ describe('Sandbox container lifecycle', () => {
         expect(destroy).toHaveBeenCalledOnce();
     });
 
+    it('clears the timeout when a command ends', async () => {
+        vi.useFakeTimers();
+        try {
+            let signal: AbortSignal | undefined;
+            const sandbox = sandboxWith({
+                running: true,
+                exec: async (_argv: string[], options: { signal?: AbortSignal }) => {
+                    signal = options.signal;
+                    return processWith({
+                        stdout: new ArrayBuffer(0),
+                        stderr: new ArrayBuffer(0),
+                        exitCode: 0
+                    });
+                }
+            });
+
+            await sandbox.exec(['true'], undefined, 1_000);
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(signal?.aborted).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('aborts a process after timeout', async () => {
         const sandbox = sandboxWith({
             running: true,
