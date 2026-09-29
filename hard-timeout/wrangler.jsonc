@@ -1,0 +1,30 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "timeout-container",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-03",
+	"containers": [{
+		"image": "./Dockerfile",
+		"class_name": "TimeoutContainer",
+		"max_instances": 1
+	}],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "TimeoutContainer",
+				"name": "TIMEOUT_CONTAINER"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"new_sqlite_classes": [
+				"TimeoutContainer"
+			],
+			"tag": "v1"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}
