@@ -56,8 +56,11 @@ async function createRequest(request: Request): Promise<SandboxOptions> {
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
         throw new TypeError('request body must be a JSON object');
     }
+    return sandboxOptions(body);
+}
 
-    const { vcpu, memoryMib, diskMb, image } = body as Record<string, unknown>;
+function sandboxOptions(options: object): SandboxOptions {
+    const { vcpu, memoryMib, diskMb, image } = options as Record<string, unknown>;
     for (const [name, value] of Object.entries({ vcpu, memoryMib, diskMb })) {
         if (
             value !== undefined &&
@@ -129,7 +132,9 @@ export class Sandbox extends DurableObject<Env> {
         return this.ctx.container;
     }
 
-    start({ vcpu, memoryMib, diskMb, image }: SandboxOptions = {}): void {
+    start(options: SandboxOptions = {}): void {
+        // RPC callers do not go through createRequest(), so validate here too.
+        const { vcpu, memoryMib, diskMb, image } = sandboxOptions(options);
         const container = this.container;
         if (container.running) return;
 

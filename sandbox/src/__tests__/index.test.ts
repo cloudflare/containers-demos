@@ -304,6 +304,24 @@ describe('Sandbox container lifecycle', () => {
         expect(() => sandbox.start({ image: 'missing' })).toThrow(TypeError);
     });
 
+    it.each([
+        { vcpu: 8 },
+        { vcpu: 8, memoryMib: 16384 },
+        { vcpu: -1, memoryMib: 1024, diskMb: 1000 },
+        { image: 1 }
+    ])('rejects invalid start options: %o', (options) => {
+        const start = vi.fn();
+        const sandbox = sandboxWith({
+            running: false,
+            images: {},
+            start,
+            monitor: () => new Promise(() => { })
+        });
+
+        expect(() => sandbox.start(options as object)).toThrow(TypeError);
+        expect(start).not.toHaveBeenCalled();
+    });
+
     it('reports a container start failure from exec', async () => {
         const exec = vi.fn();
         const sandbox = sandboxWith({
